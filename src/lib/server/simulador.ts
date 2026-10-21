@@ -9,6 +9,7 @@
 //   FOGO_SIM_FATOR_FALHAS=20      multiplica a taxa de falhas para a demonstração ter movimento
 import { REGIOES, TIPOS_POR_CODIGO, turnoDaHora, BAIRROS, type StatusEquipamento } from '@/lib/catalog';
 import { avaliarEquipamento, varreduraPeriodica } from './alertas';
+import { SIM_ACELERACAO, SIM_FATOR_FALHAS, SIM_INTERVALO_MS } from './config';
 import { publicar } from './bus';
 import { getDb } from './db';
 import * as repo from './repo';
@@ -17,9 +18,9 @@ import { DIAS_HISTORICO, TAXA_BASE_REGIAO, fatorPadrao, perfilFluxo } from './se
 import * as servicos from './servicos';
 import { criarRng, partesLocais, type Rng } from './util';
 
-const INTERVALO = Number(process.env.FOGO_SIM_INTERVALO_MS ?? 4000);
-const ACEL = Number(process.env.FOGO_SIM_ACELERACAO ?? 30);
-const FATOR_FALHAS = Number(process.env.FOGO_SIM_FATOR_FALHAS ?? 20);
+const INTERVALO = SIM_INTERVALO_MS;
+const ACEL = SIM_ACELERACAO;
+const FATOR_FALHAS = SIM_FATOR_FALHAS;
 const MOVEIS = ['patinete', 'veiculo_transporte', 'veiculo_fiscalizacao'];
 const FROTA = ['moto_agente', 'viatura_gcm', 'viatura_pm'];
 const PODE_SER_FURTADO = ['camera', 'totem_rotativo', 'patinete'];

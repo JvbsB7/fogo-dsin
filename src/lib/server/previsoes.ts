@@ -2,6 +2,7 @@
 // resultados prontos para as telas, sempre acompanhados de "o que é", "com quais dados" e
 // "como usar" — a explicação faz parte da entrega.
 import { REGIOES, REGIAO_POR_CODIGO, TIPOS_POR_CODIGO } from '@/lib/catalog';
+import { pesoOcorrencia } from './config';
 import { getDb } from './db';
 import { analisarFluxoRadar, detectarPicoOcorrencias, semComunicacao, type Anomalia } from './predict/anomalias';
 import { disponibilidadeDiaria, riscoDeFalha, taxasPorModelo, type EquipLeve, type EventoStatusLeve } from './predict/manutencao';
@@ -19,10 +20,10 @@ const SEMANA = 7 * 86400000;
 const cache = globalThis as unknown as { __fogoModelo?: { em: number; modelo: ModeloRisco } };
 
 function ocorrenciasLeves(desde: number): OcorrenciaLeve[] {
-  const linhas = getDb().prepare('SELECT regiao, inicio, gravidade FROM ocorrencias WHERE inicio >= ?').all(new Date(desde).toISOString()) as {
-    regiao: string; inicio: string; gravidade: number;
+  const linhas = getDb().prepare('SELECT regiao, inicio, gravidade, origem FROM ocorrencias WHERE inicio >= ?').all(new Date(desde).toISOString()) as {
+    regiao: string; inicio: string; gravidade: number; origem: string;
   }[];
-  return linhas.map((l) => ({ regiao: l.regiao, inicio: Date.parse(l.inicio), gravidade: l.gravidade }));
+  return linhas.map((l) => ({ regiao: l.regiao, inicio: Date.parse(l.inicio), gravidade: l.gravidade, peso: pesoOcorrencia(l.origem) }));
 }
 
 /** Modelo de risco treinado, reaproveitado por até 5 minutos. */
@@ -85,7 +86,7 @@ export function previsaoRisco(horas = 24, agora = Date.now()) {
     matriz: Object.fromEntries([['todas', matrizSemanal(modelo)], ...REGIOES_COD.map((r) => [r, matrizSemanal(modelo, r)])]),
     explicacao: {
       oQue: 'Índice de risco (0 a 100) e número esperado de ocorrências por região, hora a hora, nas próximas horas.',
-      dados: `${modelo.amostras} ocorrências das últimas ${modelo.opcoes.semanas} semanas (tipo, gravidade, local e horário), ` +
+      dados: `${Math.round(modelo.amostras)} ocorrências das últimas ${modelo.opcoes.semanas} semanas (tipo, gravidade, local e horário), ` +
         'mais a situação atual de semáforos e radares de cada região.',
       como: `Taxa de Poisson por região e hora da semana, com peso maior para semanas recentes (meia-vida de ${modelo.opcoes.meiaVidaSemanas} semanas) ` +
         'e suavização pela média da mesma hora do dia. O índice compara a taxa ponderada pela gravidade com o percentil 95 da cidade ' +
@@ -166,9 +167,10 @@ export function detectarAnomalias(agora = Date.now()): Anomalia[] {
   const modelo = modeloRisco(agora);
   const janela = 2;
   const desde = agora - janela * 3600000;
-  const obs = Object.fromEntries(
-    (getDb().prepare('SELECT regiao, COUNT(*) AS n FROM ocorrencias WHERE inicio >= ? GROUP BY regiao').all(new Date(desde).toISOString()) as { regiao: string; n: number }[]).map((r) => [r.regiao, r.n]),
-  );
+  // Observado ponderado (ocorrências simuladas valem 1/aceleração), arredondado para o teste de Poisson.
+  const obs: Record<string, number> = {};
+  for (const o of ocorrenciasLeves(desde)) obs[o.regiao] = (obs[o.regiao] ?? 0) + (o.peso ?? 1);
+  for (const r of Object.keys(obs)) obs[r] = Math.round(obs[r]);
   const esp: Record<string, number> = {};
   for (const r of REGIOES_COD) {
     esp[r] = 0;

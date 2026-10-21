@@ -15,6 +15,8 @@ export interface OcorrenciaLeve {
   /** epoch ms */
   inicio: number;
   gravidade: number;
+  /** Quanto a ocorrência conta nas estatísticas (padrão 1; ver pesoOcorrencia). */
+  peso?: number;
 }
 
 export interface OpcoesModelo {
@@ -24,7 +26,7 @@ export interface OpcoesModelo {
   forcaPrior: number;
 }
 
-export const OPCOES_PADRAO: OpcoesModelo = { semanas: 16, meiaVidaSemanas: 4, forcaPrior: 2 };
+export const OPCOES_PADRAO: OpcoesModelo = { semanas: 16, meiaVidaSemanas: 4, forcaPrior: 4 };
 
 export interface ModeloRisco {
   regioes: string[];
@@ -53,11 +55,11 @@ export function treinarModeloRisco(ocorrencias: OcorrenciaLeve[], regioes: strin
   for (const o of ocorrencias) {
     const idade = (agora - o.inicio) / SEMANA;
     if (idade < 0 || idade >= semanas || !num[o.regiao]) continue;
-    const w = pesoDecaimento(idade, meiaVidaSemanas);
+    const w = pesoDecaimento(idade, meiaVidaSemanas) * (o.peso ?? 1);
     const s = horaDaSemana(o.inicio);
     num[o.regiao][s] += w;
     numG[o.regiao][s] += w * o.gravidade;
-    amostras++;
+    amostras += o.peso ?? 1;
   }
   // Cada hora da semana aparece uma vez por semana: a "exposição" é a soma dos pesos das semanas.
   let exposicao = 0;
@@ -141,12 +143,12 @@ export function tendenciaSemanal(ocorrencias: OcorrenciaLeve[], regioes: string[
     for (const o of ocorrencias) {
       if (o.regiao !== regiao) continue;
       const idx = semanas - 1 - Math.floor((agora - o.inicio) / SEMANA);
-      if (idx >= 0 && idx < semanas) cont[idx]++;
+      if (idx >= 0 && idx < semanas) cont[idx] += o.peso ?? 1;
     }
     const { inclinacao, r2 } = regressaoLinear(cont.map((_, i) => i), cont);
     const m = media(cont) || 1;
     const variacao = (100 * inclinacao) / m;
     const direcao = r2 >= 0.3 && Math.abs(variacao) >= 2 ? (variacao > 0 ? 'alta' : 'queda') : 'estavel';
-    return { regiao, semanal: cont, variacaoPctSemana: Math.round(variacao * 10) / 10, r2: Math.round(r2 * 100) / 100, direcao };
+    return { regiao, semanal: cont.map((v) => Math.round(v)), variacaoPctSemana: Math.round(variacao * 10) / 10, r2: Math.round(r2 * 100) / 100, direcao };
   });
 }

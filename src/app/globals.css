@@ -128,3 +128,111 @@
     @apply font-sans;
   }
 }
+/* ---------------------------------------------------------------- F.O.G.O.
+   Tema da central de operações: azul-noite com destaque laranja ("fogo").
+   Sobrescreve os tokens do shadcn, então todos os componentes herdam. */
+.dark {
+  --background: oklch(0.155 0.018 255);
+  --foreground: oklch(0.96 0.005 255);
+  --card: oklch(0.195 0.022 255);
+  --card-foreground: oklch(0.96 0.005 255);
+  --popover: oklch(0.215 0.024 255);
+  --popover-foreground: oklch(0.96 0.005 255);
+  --primary: oklch(0.74 0.17 52);
+  --primary-foreground: oklch(0.18 0.03 50);
+  --secondary: oklch(0.255 0.025 255);
+  --secondary-foreground: oklch(0.96 0.005 255);
+  --muted: oklch(0.245 0.022 255);
+  --muted-foreground: oklch(0.7 0.02 255);
+  --accent: oklch(0.27 0.03 255);
+  --accent-foreground: oklch(0.96 0.005 255);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.74 0.17 52 / 60%);
+  --chart-1: oklch(0.74 0.17 52);
+  --chart-2: oklch(0.72 0.14 230);
+  --chart-3: oklch(0.75 0.15 155);
+  --chart-4: oklch(0.7 0.16 300);
+  --chart-5: oklch(0.8 0.15 90);
+}
+
+/* Mapa */
+.leaflet-container {
+  background: oklch(0.13 0.015 255);
+  font-family: inherit;
+}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--popover);
+  color: var(--popover-foreground);
+}
+.leaflet-control-attribution {
+  background: oklch(0.155 0.018 255 / 80%) !important;
+  color: oklch(0.7 0.02 255) !important;
+}
+.leaflet-control-attribution a {
+  color: oklch(0.8 0.05 230) !important;
+}
+.leaflet-bar a {
+  background: var(--card) !important;
+  color: var(--foreground) !important;
+  border-color: var(--border) !important;
+}
+
+.fogo-marcador {
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  background: oklch(0.2 0.02 255 / 92%);
+  border: 2px solid var(--cor, #22c55e);
+  box-shadow: 0 0 0 2px oklch(0 0 0 / 35%);
+  line-height: 1;
+  transition: transform 120ms;
+}
+.fogo-marcador:hover {
+  transform: scale(1.25);
+}
+.fogo-marcador--alerta {
+  animation: fogo-pulso 1.6s ease-out infinite;
+}
+.fogo-marcador--selecionado {
+  transform: scale(1.35);
+  box-shadow: 0 0 0 3px var(--primary);
+}
+.fogo-agente {
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: oklch(0.25 0.05 255);
+  border: 2px solid var(--cor, #22c55e);
+  line-height: 1;
+}
+.fogo-ocorrencia {
+  display: grid;
+  place-items: center;
+  border-radius: 9999px;
+  background: oklch(0.62 0.22 27 / 85%);
+  color: white;
+  animation: fogo-pulso-vermelho 1.4s ease-out infinite;
+  line-height: 1;
+}
+@keyframes fogo-pulso {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--cor) 70%, transparent); }
+  100% { box-shadow: 0 0 0 14px transparent; }
+}
+@keyframes fogo-pulso-vermelho {
+  0% { box-shadow: 0 0 0 0 oklch(0.62 0.22 27 / 70%); }
+  100% { box-shadow: 0 0 0 16px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fogo-marcador--alerta,
+  .fogo-ocorrencia {
+    animation: none;
+  }
+}
+
+/* Tiles do OpenStreetMap "escurecidos" para combinar com o tema da central. */
+.fogo-tiles {
+  filter: invert(100%) hue-rotate(185deg) brightness(92%) contrast(88%) saturate(60%);
+}

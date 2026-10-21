@@ -71,6 +71,14 @@ describe('modelo de risco', () => {
     assert.ok(recente.taxa.a[s] > antiga.taxa.a[s]);
   });
 
+  it('ocorrências com peso fracionado (simulador acelerado) não inflam a taxa', () => {
+    const s = horaDaSemana(AGORA);
+    const t0 = AGORA - SEMANA + 60000;
+    const umaReal = treinarModeloRisco([{ regiao: 'a', inicio: t0, gravidade: 1 }], ['a'], AGORA);
+    const trintaSimuladas = treinarModeloRisco(Array.from({ length: 30 }, (_, i) => ({ regiao: 'a', inicio: t0 + i, gravidade: 1, peso: 1 / 30 })), ['a'], AGORA);
+    assert.ok(Math.abs(umaReal.taxa.a[s] - trintaSimuladas.taxa.a[s]) < 1e-9);
+  });
+
   it('faixas do índice', () => {
     assert.equal(nivelRisco(10), 'baixo');
     assert.equal(nivelRisco(50), 'moderado');
