@@ -3,7 +3,7 @@
 // marcado como furtado pela tela ou pela telemetria gera exatamente o mesmo efeito.
 import { TIPOS_POR_CODIGO, type StatusEquipamento } from '@/lib/catalog';
 import type { AgenteEntrada, EquipamentoEntrada, Ocorrencia } from '@/lib/types';
-import { avaliarEquipamento, avaliarOcorrencia } from './alertas';
+import { avaliarEquipamento, avaliarOcorrencia, resolverAlertasDe } from './alertas';
 import { publicar } from './bus';
 import { getDb } from './db';
 import { invalidarModelo } from './previsoes';
@@ -28,6 +28,7 @@ export function editarEquipamento(id: number, e: EquipamentoEntrada) {
 }
 
 export function excluirEquipamento(id: number) {
+  resolverAlertasDe('equipamento_id', id);
   const ok = repo.removerEquipamento(id);
   if (ok) publicar({ tipo: 'equipamento_removido', dado: { id } });
   return ok;
@@ -66,8 +67,17 @@ export function editarAgente(id: number, a: AgenteEntrada) {
 }
 
 export function excluirAgente(id: number) {
+  const ag = repo.obterAgente(id);
+  resolverAlertasDe('agente_id', id);
   const ok = repo.removerAgente(id);
   if (ok) publicar({ tipo: 'agente_removido', dado: { id } });
+  // A ocorrência que ele atendia não pode ficar sem equipe: despacha o próximo mais perto.
+  const oc = ag?.ocorrenciaId ? repo.obterOcorrencia(ag.ocorrenciaId) : null;
+  if (ok && oc && !oc.fim && oc.agenteId === id) {
+    repo.atribuirAgenteOcorrencia(oc.id, null);
+    despacharAgente(oc);
+    publicar({ tipo: 'ocorrencia', dado: repo.obterOcorrencia(oc.id)! });
+  }
   return ok;
 }
 

@@ -37,13 +37,23 @@ export function avaliarEquipamento(e: Equipamento) {
   } else if (e.status === 'furtado') {
     emitir({
       nivel: 'critico', categoria: 'Segurança', chave: chaveFurto, equipamentoId: e.id, bairro: e.bairro, regiao: e.regiao,
-      titulo: `${nome} furtado ou vandalizado`, descricao: `${local}. Acionar Guarda Municipal e registrar boletim de ocorrência.`,
+      titulo: `Furto ou vandalismo: ${nome}`, descricao: `${local}. Acionar Guarda Municipal e registrar boletim de ocorrência.`,
     });
-  } else if (e.status === 'operacional') {
-    resolver(chaveFalha);
-    resolver(chaveFurto);
-    resolver(`anom:sem_comunicacao:${e.id}`);
   }
+  // A causa some quando a situação muda (ex.: furtado → desativado também encerra o alerta de furto).
+  if (e.status !== 'mau_funcionamento') resolver(chaveFalha);
+  if (e.status !== 'furtado') resolver(chaveFurto);
+  if (e.status === 'operacional') resolver(`anom:sem_comunicacao:${e.id}`);
+  const limiteVencida = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  if (e.status !== 'operacional' || !e.manutencaoProxima || e.manutencaoProxima >= limiteVencida) resolver(`manut:${e.id}:vencida`);
+}
+
+/** Encerra os alertas abertos de um equipamento ou agente que foi excluído do cadastro. */
+export function resolverAlertasDe(campo: 'equipamento_id' | 'agente_id', id: number) {
+  const chaves = getDb()
+    .prepare(`SELECT DISTINCT chave FROM alertas WHERE reconhecido_em IS NULL AND ${campo} = ?`)
+    .all(id) as { chave: string }[];
+  for (const { chave } of chaves) resolver(chave);
 }
 
 export function avaliarOcorrencia(o: Ocorrencia) {
@@ -86,6 +96,9 @@ export function varreduraPeriodica(agora = Date.now()) {
        WHERE status = 'operacional' AND manutencao_proxima < ? AND (tipo LIKE 'radar_%' OR tipo = 'semaforo')`,
     )
     .all(limite) as { id: number; numero_serie: string; tipo: string; bairro: string; regiao: string; manutencao_proxima: string }[];
+  const chavesVencidas = new Set(vencidos.map((v) => `manut:${v.id}:vencida`));
+  const manutAbertas = getDb().prepare(`SELECT DISTINCT chave FROM alertas WHERE reconhecido_em IS NULL AND chave LIKE 'manut:%'`).all() as { chave: string }[];
+  for (const { chave } of manutAbertas) if (!chavesVencidas.has(chave)) resolver(chave);
   for (const v of vencidos) {
     const dias = Math.round((Date.parse(hoje) - Date.parse(v.manutencao_proxima)) / 86400000);
     emitir({

@@ -329,7 +329,7 @@ export function encerrarOcorrencia(id: number, quando = agoraISO()) {
   return obterOcorrencia(id);
 }
 
-export function atribuirAgenteOcorrencia(ocorrenciaId: number, agenteId: number) {
+export function atribuirAgenteOcorrencia(ocorrenciaId: number, agenteId: number | null) {
   getDb().prepare('UPDATE ocorrencias SET agente_id = ? WHERE id = ?').run(agenteId, ocorrenciaId);
 }
 
