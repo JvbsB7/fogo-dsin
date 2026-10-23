@@ -9,6 +9,7 @@ export interface Camadas {
   agentes: boolean;
   ocorrencias: boolean;
   regioes: boolean;
+  calor: boolean;
 }
 
 export type Selecao = { tipo: 'equipamento' | 'agente' | 'ocorrencia'; id: number } | null;
@@ -18,7 +19,7 @@ interface EstadoFiltros {
   status: string[];
   regioes: string[];
   orgaos: string[];
-  bairro: string | null;
+  bairros: string[];
   somenteManutencao: boolean;
   camadas: Camadas;
   selecao: Selecao;
@@ -31,13 +32,13 @@ interface EstadoFiltros {
   focar: (regiao: string | null) => void;
 }
 
-const VAZIO = { tipos: [], status: [], regioes: [], orgaos: [], bairro: null, somenteManutencao: false };
+const VAZIO = { tipos: [], status: [], regioes: [], orgaos: [], bairros: [], somenteManutencao: false };
 
 export const useFiltros = create<EstadoFiltros>()(
   persist(
     (set) => ({
       ...VAZIO,
-      camadas: { equipamentos: true, agentes: true, ocorrencias: true, regioes: true },
+      camadas: { equipamentos: true, agentes: true, ocorrencias: true, regioes: true, calor: false },
       selecao: null,
       focoRegiao: null,
       set: (p) => set(p),
@@ -48,7 +49,7 @@ export const useFiltros = create<EstadoFiltros>()(
     }),
     {
       name: 'fogo-filtros',
-      partialize: (s) => ({ tipos: s.tipos, status: s.status, regioes: s.regioes, orgaos: s.orgaos, somenteManutencao: s.somenteManutencao, camadas: s.camadas }),
+      partialize: (s) => ({ tipos: s.tipos, status: s.status, regioes: s.regioes, orgaos: s.orgaos, bairros: s.bairros, somenteManutencao: s.somenteManutencao, camadas: s.camadas }),
     },
   ),
 );

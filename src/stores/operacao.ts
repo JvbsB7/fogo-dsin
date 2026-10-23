@@ -21,7 +21,8 @@ interface EstadoOperacao {
   novosCriticos: Alerta[];
   iniciar: () => () => void;
   recarregar: () => Promise<void>;
-  aplicar: (e: EventoTempoReal) => void;
+  /** Aplica de uma vez os eventos recebidos (um único redesenho das telas). */
+  aplicar: (eventos: EventoTempoReal[]) => void;
   consumirCriticos: () => Alerta[];
   /** Atualização otimista depois de uma ação feita na própria tela. */
   upsertEquipamento: (e: Equipamento) => void;
@@ -34,6 +35,12 @@ const indexar = <T extends { id: number }>(lista: T[]) => Object.fromEntries(lis
 
 let fonte: EventSource | null = null;
 let assinantes = 0;
+
+// O simulador manda dezenas de eventos por ciclo (cada agente e veículo que se move). Aplicar
+// um por um redesenharia a Central dezenas de vezes seguidas; juntamos tudo a cada 250 ms.
+const INTERVALO_LOTE_MS = 250;
+let fila: EventoTempoReal[] = [];
+let agendado: ReturnType<typeof setTimeout> | null = null;
 
 export const useOperacao = create<EstadoOperacao>((set, get) => ({
   equipamentos: {},
@@ -72,10 +79,16 @@ export const useOperacao = create<EstadoOperacao>((set, get) => ({
       fonte.onerror = () => set({ conectado: false });
       fonte.onmessage = (m) => {
         try {
-          get().aplicar(JSON.parse(m.data) as EventoTempoReal);
+          fila.push(JSON.parse(m.data) as EventoTempoReal);
         } catch {
-          /* mensagem malformada: ignora */
+          return; // mensagem malformada: ignora
         }
+        agendado ??= setTimeout(() => {
+          const lote = fila;
+          fila = [];
+          agendado = null;
+          get().aplicar(lote);
+        }, INTERVALO_LOTE_MS);
       };
     }
     return () => {
@@ -88,46 +101,48 @@ export const useOperacao = create<EstadoOperacao>((set, get) => ({
     };
   },
 
-  aplicar: (e) =>
+  aplicar: (eventos) =>
     set((s) => {
-      const agora = Date.now();
-      switch (e.tipo) {
-        case 'equipamento':
-          return { equipamentos: { ...s.equipamentos, [e.dado.id]: e.dado }, ultimaAtualizacao: agora };
-        case 'equipamento_removido': {
-          const { [e.dado.id]: _, ...resto } = s.equipamentos;
-          return { equipamentos: resto, ultimaAtualizacao: agora };
-        }
-        case 'agente':
-          return { agentes: { ...s.agentes, [e.dado.id]: e.dado }, ultimaAtualizacao: agora };
-        case 'agente_removido': {
-          const { [e.dado.id]: _, ...resto } = s.agentes;
-          return { agentes: resto, ultimaAtualizacao: agora };
-        }
-        case 'ocorrencia': {
-          if (e.dado.fim) {
-            const { [e.dado.id]: _, ...resto } = s.ocorrencias;
-            return { ocorrencias: resto, ultimaAtualizacao: agora };
+      // Cada mapa é copiado no máximo uma vez por lote, e só se algum evento mexer nele.
+      const novo: Partial<EstadoOperacao> = {};
+      const copia = <K extends 'equipamentos' | 'agentes' | 'ocorrencias' | 'alertas'>(k: K) =>
+        (novo[k] ??= { ...s[k] }) as EstadoOperacao[K];
+      let criticos = s.novosCriticos;
+      for (const e of eventos) {
+        switch (e.tipo) {
+          case 'equipamento':
+            copia('equipamentos')[e.dado.id] = e.dado;
+            break;
+          case 'equipamento_removido':
+            delete copia('equipamentos')[e.dado.id];
+            break;
+          case 'agente':
+            copia('agentes')[e.dado.id] = e.dado;
+            break;
+          case 'agente_removido':
+            delete copia('agentes')[e.dado.id];
+            break;
+          case 'ocorrencia':
+            if (e.dado.fim) delete copia('ocorrencias')[e.dado.id];
+            else copia('ocorrencias')[e.dado.id] = e.dado;
+            break;
+          case 'alerta': {
+            const alertas = copia('alertas');
+            if (e.dado.reconhecidoEm) {
+              delete alertas[e.dado.id];
+              break;
+            }
+            if (!alertas[e.dado.id] && e.dado.nivel === 'critico') criticos = [...criticos, e.dado];
+            alertas[e.dado.id] = e.dado;
+            break;
           }
-          return { ocorrencias: { ...s.ocorrencias, [e.dado.id]: e.dado }, ultimaAtualizacao: agora };
+          case 'resumo':
+            novo.resumo = e.dado;
+            novo.simulador = true;
+            break;
         }
-        case 'alerta': {
-          if (e.dado.reconhecidoEm) {
-            const { [e.dado.id]: _, ...resto } = s.alertas;
-            return { alertas: resto, ultimaAtualizacao: agora };
-          }
-          const novo = !s.alertas[e.dado.id];
-          return {
-            alertas: { ...s.alertas, [e.dado.id]: e.dado },
-            novosCriticos: novo && e.dado.nivel === 'critico' ? [...s.novosCriticos, e.dado] : s.novosCriticos,
-            ultimaAtualizacao: agora,
-          };
-        }
-        case 'resumo':
-          return { resumo: e.dado, simulador: true, ultimaAtualizacao: agora };
-        default:
-          return {};
       }
+      return { ...novo, novosCriticos: criticos, ultimaAtualizacao: Date.now() };
     }),
 
   consumirCriticos: () => {

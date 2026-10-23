@@ -2,14 +2,15 @@
 
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { useEffect, useMemo } from 'react';
-import { Circle, MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet';
+import { memo, useCallback, useEffect, useMemo } from 'react';
+import { Circle, MapContainer, Marker, Rectangle, TileLayer, Tooltip, useMap, useMapEvents } from 'react-leaflet';
 import {
   BAIRROS, CIDADE, FUNCAO_POR_CODIGO, OCORRENCIA_POR_CODIGO, REGIOES, STATUS_AGENTE_POR_CODIGO, STATUS_POR_CODIGO, TIPOS_POR_CODIGO,
 } from '@/lib/catalog';
 import type { Agente, Equipamento, Ocorrencia, ResumoRegiao } from '@/lib/types';
 import type { Camadas, Selecao } from '@/stores/filtros';
 import { COR_SITUACAO } from './selos';
+import { useApi } from './use-api';
 
 const cacheIcones = new Map<string, L.DivIcon>();
 function icone(chave: string, html: string, tamanho: number) {
@@ -70,6 +71,92 @@ function Foco({ regiao, aoConcluir }: { regiao: string | null; aoConcluir: () =>
   return null;
 }
 
+/** Enquadra os bairros escolhidos no filtro (só quando a escolha muda). */
+function EnquadrarBairros({ bairros }: { bairros: string[] }) {
+  const map = useMap();
+  const chave = bairros.join('|');
+  useEffect(() => {
+    const pontos = BAIRROS.filter((b) => chave.split('|').includes(b.nome)).map((b) => [b.lat, b.lng] as [number, number]);
+    if (pontos.length) map.flyToBounds(L.latLngBounds(pontos).pad(0.5), { maxZoom: 15, duration: 0.8 });
+  }, [chave, map]);
+  return null;
+}
+
+interface RespostaCalor {
+  dias: number;
+  total: number;
+  celulas: { sul: number; oeste: number; norte: number; leste: number; n: number; intensidade: number }[];
+}
+
+/** Mapa de calor das ocorrências recentes: grade de ~450 m colorida por gravidade acumulada. */
+function CamadaCalor() {
+  const { dado } = useApi<RespostaCalor>('/api/ocorrencias/calor?dias=30', 5 * 60000);
+  if (!dado) return null;
+  return dado.celulas
+    .filter((c) => c.intensidade >= 0.08)
+    .map((c) => {
+      const t = c.intensidade;
+      const cor = t > 0.66 ? '#ef4444' : t > 0.33 ? '#f97316' : '#eab308';
+      return (
+        <Rectangle
+          key={`${c.sul}:${c.oeste}`}
+          bounds={[[c.sul, c.oeste], [c.norte, c.leste]]}
+          pathOptions={{ stroke: false, fillColor: cor, fillOpacity: 0.1 + t * 0.4 }}
+        >
+          <Tooltip sticky>{c.n} ocorrência(s) nos últimos {dado.dias} dias</Tooltip>
+        </Rectangle>
+      );
+    });
+}
+
+// Marcadores memorizados: com ~400 pontos no mapa, cada atualização ao vivo redesenha só o
+// marcador cujo dado mudou (o objeto só é trocado no store quando chega um evento dele).
+type AoSelecionar = (s: Selecao) => void;
+
+const MarcadorEquipamento = memo(function MarcadorEquipamento({ e, selecionado, aoSelecionar }: { e: Equipamento; selecionado: boolean; aoSelecionar: AoSelecionar }) {
+  const eventos = useMemo(() => ({ click: () => aoSelecionar({ tipo: 'equipamento', id: e.id }) }), [aoSelecionar, e.id]);
+  return (
+    <Marker
+      position={[e.lat, e.lng]}
+      icon={iconeEquipamento(e, selecionado)}
+      zIndexOffset={selecionado ? 1000 : e.status === 'operacional' ? 0 : 400}
+      eventHandlers={eventos}
+    >
+      <Tooltip direction="top" offset={[0, -10]}>
+        {TIPOS_POR_CODIGO[e.tipo]?.nome} · {e.numeroSerie}
+        <br />
+        {STATUS_POR_CODIGO[e.status]?.rotulo} — {e.bairro}
+      </Tooltip>
+    </Marker>
+  );
+});
+
+const MarcadorAgente = memo(function MarcadorAgente({ a, selecionado, aoSelecionar }: { a: Agente; selecionado: boolean; aoSelecionar: AoSelecionar }) {
+  const eventos = useMemo(() => ({ click: () => aoSelecionar({ tipo: 'agente', id: a.id }) }), [aoSelecionar, a.id]);
+  return (
+    <Marker position={[a.lat, a.lng]} icon={iconeAgente(a, selecionado)} zIndexOffset={600} eventHandlers={eventos}>
+      <Tooltip direction="top" offset={[0, -10]}>
+        {a.nome} ({FUNCAO_POR_CODIGO[a.funcao]?.rotulo})
+        <br />
+        {STATUS_AGENTE_POR_CODIGO[a.status]?.rotulo}
+      </Tooltip>
+    </Marker>
+  );
+});
+
+const MarcadorOcorrencia = memo(function MarcadorOcorrencia({ o, aoSelecionar }: { o: Ocorrencia; aoSelecionar: AoSelecionar }) {
+  const eventos = useMemo(() => ({ click: () => aoSelecionar({ tipo: 'ocorrencia', id: o.id }) }), [aoSelecionar, o.id]);
+  return (
+    <Marker position={[o.lat, o.lng]} icon={iconeOcorrencia(o)} zIndexOffset={800} eventHandlers={eventos}>
+      <Tooltip direction="top" offset={[0, -10]}>
+        {OCORRENCIA_POR_CODIGO[o.tipo]?.rotulo} · gravidade {o.gravidade}/3
+        <br />
+        {o.bairro}
+      </Tooltip>
+    </Marker>
+  );
+});
+
 function CliqueNoMapa({ aoClicar }: { aoClicar?: (lat: number, lng: number) => void }) {
   useMapEvents({ click: (e) => aoClicar?.(e.latlng.lat, e.latlng.lng) });
   return null;
@@ -86,10 +173,12 @@ export interface MapaProps {
   focoRegiao?: string | null;
   aoFocar?: () => void;
   aoClicarRegiao?: (regiao: string) => void;
+  bairros?: string[];
 }
 
-export default function Mapa({ equipamentos, agentes, ocorrencias, regioes, camadas, selecao, aoSelecionar, focoRegiao, aoFocar, aoClicarRegiao }: MapaProps) {
+export default function Mapa({ equipamentos, agentes, ocorrencias, regioes, camadas, selecao, aoSelecionar, focoRegiao, aoFocar, aoClicarRegiao, bairros = [] }: MapaProps) {
   const situacao = useMemo(() => Object.fromEntries(regioes.map((r) => [r.regiao, r])), [regioes]);
+  const limparSelecao = useCallback(() => aoSelecionar(null), [aoSelecionar]);
   return (
     <MapContainer center={CIDADE.centro} zoom={13} minZoom={11} className="size-full" preferCanvas={false} zoomControl>
       <TileLayer
@@ -99,7 +188,10 @@ export default function Mapa({ equipamentos, agentes, ocorrencias, regioes, cama
         maxZoom={19}
       />
       <Foco regiao={focoRegiao ?? null} aoConcluir={aoFocar ?? (() => {})} />
-      <CliqueNoMapa aoClicar={() => aoSelecionar(null)} />
+      <EnquadrarBairros bairros={bairros} />
+      <CliqueNoMapa aoClicar={limparSelecao} />
+
+      {camadas.calor && <CamadaCalor />}
 
       {camadas.regioes &&
         GEO_REGIOES.map((g) => {
@@ -129,61 +221,16 @@ export default function Mapa({ equipamentos, agentes, ocorrencias, regioes, cama
         })}
 
       {camadas.equipamentos &&
-        equipamentos.map((e) => {
-          const sel = selecao?.tipo === 'equipamento' && selecao.id === e.id;
-          return (
-            <Marker
-              key={`e${e.id}`}
-              position={[e.lat, e.lng]}
-              icon={iconeEquipamento(e, sel)}
-              zIndexOffset={sel ? 1000 : e.status === 'operacional' ? 0 : 400}
-              eventHandlers={{ click: () => aoSelecionar({ tipo: 'equipamento', id: e.id }) }}
-            >
-              <Tooltip direction="top" offset={[0, -10]}>
-                {TIPOS_POR_CODIGO[e.tipo]?.nome} · {e.numeroSerie}
-                <br />
-                {STATUS_POR_CODIGO[e.status]?.rotulo} — {e.bairro}
-              </Tooltip>
-            </Marker>
-          );
-        })}
+        equipamentos.map((e) => (
+          <MarcadorEquipamento key={`e${e.id}`} e={e} selecionado={selecao?.tipo === 'equipamento' && selecao.id === e.id} aoSelecionar={aoSelecionar} />
+        ))}
 
       {camadas.agentes &&
-        agentes.map((a) => {
-          const sel = selecao?.tipo === 'agente' && selecao.id === a.id;
-          return (
-            <Marker
-              key={`a${a.id}`}
-              position={[a.lat, a.lng]}
-              icon={iconeAgente(a, sel)}
-              zIndexOffset={600}
-              eventHandlers={{ click: () => aoSelecionar({ tipo: 'agente', id: a.id }) }}
-            >
-              <Tooltip direction="top" offset={[0, -10]}>
-                {a.nome} ({FUNCAO_POR_CODIGO[a.funcao]?.rotulo})
-                <br />
-                {STATUS_AGENTE_POR_CODIGO[a.status]?.rotulo}
-              </Tooltip>
-            </Marker>
-          );
-        })}
-
-      {camadas.ocorrencias &&
-        ocorrencias.map((o) => (
-          <Marker
-            key={`o${o.id}`}
-            position={[o.lat, o.lng]}
-            icon={iconeOcorrencia(o)}
-            zIndexOffset={800}
-            eventHandlers={{ click: () => aoSelecionar({ tipo: 'ocorrencia', id: o.id }) }}
-          >
-            <Tooltip direction="top" offset={[0, -10]}>
-              {OCORRENCIA_POR_CODIGO[o.tipo]?.rotulo} · gravidade {o.gravidade}/3
-              <br />
-              {o.bairro}
-            </Tooltip>
-          </Marker>
+        agentes.map((a) => (
+          <MarcadorAgente key={`a${a.id}`} a={a} selecionado={selecao?.tipo === 'agente' && selecao.id === a.id} aoSelecionar={aoSelecionar} />
         ))}
+
+      {camadas.ocorrencias && ocorrencias.map((o) => <MarcadorOcorrencia key={`o${o.id}`} o={o} aoSelecionar={aoSelecionar} />)}
     </MapContainer>
   );
 }

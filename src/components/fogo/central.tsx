@@ -14,6 +14,7 @@ import { Kpis } from './kpis';
 import { MapaCliente } from './mapa-cliente';
 import { NovaOcorrencia } from './nova-ocorrencia';
 import { PainelLateral } from './painel-lateral';
+import { SimularCenario } from './simular-cenario';
 
 function Legenda() {
   return (
@@ -53,16 +54,21 @@ export function Central() {
   const todos = useMemo(() => Object.values(equipamentosMapa), [equipamentosMapa]);
   const equipamentos = useMemo(
     () => filtrarEquipamentos(todos, f),
-    [todos, f.tipos, f.status, f.regioes, f.orgaos, f.somenteManutencao], // eslint-disable-line react-hooks/exhaustive-deps
+    [todos, f.tipos, f.status, f.regioes, f.bairros, f.orgaos, f.somenteManutencao], // eslint-disable-line react-hooks/exhaustive-deps
   );
-  // Agentes fora de serviço não aparecem no mapa; o filtro de região vale para todas as camadas.
+  // Agentes fora de serviço não aparecem no mapa; os filtros de região e bairro valem para todas as camadas
+  // (agente pelo bairro da base).
   const agentes = useMemo(
-    () => Object.values(agentesMapa).filter((a) => a.status !== 'fora_de_servico' && (!f.regioes.length || f.regioes.includes(a.regiao))),
-    [agentesMapa, f.regioes],
+    () =>
+      Object.values(agentesMapa).filter(
+        (a) =>
+          a.status !== 'fora_de_servico' && (!f.regioes.length || f.regioes.includes(a.regiao)) && (!f.bairros.length || f.bairros.includes(a.bairroBase)),
+      ),
+    [agentesMapa, f.regioes, f.bairros],
   );
   const ocorrencias = useMemo(
-    () => Object.values(ocorrenciasMapa).filter((o) => !f.regioes.length || f.regioes.includes(o.regiao)),
-    [ocorrenciasMapa, f.regioes],
+    () => Object.values(ocorrenciasMapa).filter((o) => (!f.regioes.length || f.regioes.includes(o.regiao)) && (!f.bairros.length || f.bairros.includes(o.bairro))),
+    [ocorrenciasMapa, f.regioes, f.bairros],
   );
   const limparFoco = useCallback(() => f.focar(null), [f.focar]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -86,12 +92,14 @@ export function Central() {
             aoSelecionar={f.selecionar}
             focoRegiao={f.focoRegiao}
             aoFocar={limparFoco}
-            aoClicarRegiao={(r) => f.set({ regioes: f.regioes.length === 1 && f.regioes[0] === r ? [] : [r] })}
+            bairros={f.bairros}
+            aoClicarRegiao={(r) => f.set({ regioes: f.regioes.length === 1 && f.regioes[0] === r ? [] : [r], bairros: [] })}
           />
           <div className="absolute top-3 right-3 z-[400] flex gap-2">
             <Button size="sm" variant="secondary" className="xl:hidden" onClick={() => setFiltrosAbertos(true)}>
               <SlidersHorizontal /> Filtros
             </Button>
+            <SimularCenario />
             <Button size="sm" onClick={() => setNovaAberta(true)}>
               <Plus /> Registrar ocorrência
             </Button>

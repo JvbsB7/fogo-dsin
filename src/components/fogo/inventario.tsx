@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import { useFiltros } from '@/stores/filtros';
 import { useOperacao } from '@/stores/operacao';
 import { EscolhaMultipla } from './escolha';
-import { OPCOES_ORGAO, OPCOES_REGIAO, OPCOES_STATUS, OPCOES_TIPO, filtrarEquipamentos } from './filtros-central';
+import { OPCOES_ORGAO, OPCOES_REGIAO, OPCOES_STATUS, OPCOES_TIPO, filtrarEquipamentos, opcoesBairro } from './filtros-central';
 import { Paginacao, baixarCsv } from './paginacao';
 import { SeloStatus } from './selos';
 
@@ -58,6 +58,7 @@ export function Inventario() {
   const [tipos, setTipos] = useState<string[]>([]);
   const [status, setStatus] = useState<string[]>([]);
   const [regioes, setRegioes] = useState<string[]>([]);
+  const [bairros, setBairros] = useState<string[]>([]);
   const [orgaos, setOrgaos] = useState<string[]>([]);
   const [somenteManutencao, setSomenteManutencao] = useState(false);
   const [ordem, setOrdem] = useState<{ col: Coluna; asc: boolean }>({ col: 'numeroSerie', asc: true });
@@ -65,7 +66,7 @@ export function Inventario() {
 
   const lista = useMemo(() => {
     const q = busca.trim().toLowerCase();
-    const filtrados = filtrarEquipamentos(Object.values(equipamentosMapa), { tipos, status, regioes, orgaos, somenteManutencao }).filter(
+    const filtrados = filtrarEquipamentos(Object.values(equipamentosMapa), { tipos, status, regioes, bairros, orgaos, somenteManutencao }).filter(
       (e) =>
         !q ||
         [e.numeroSerie, e.marca, e.modelo, e.logradouro, e.referencia, e.bairro, TIPOS_POR_CODIGO[e.tipo]?.nome].some((v) => v?.toLowerCase().includes(q)),
@@ -73,7 +74,7 @@ export function Inventario() {
     const val = (e: Equipamento) =>
       ordem.col === 'tipo' ? (TIPOS_POR_CODIGO[e.tipo]?.nome ?? '') : ordem.col === 'status' ? STATUS_POR_CODIGO[e.status].rotulo : ((e[ordem.col] as string | null) ?? '');
     return filtrados.sort((a, b) => val(a).localeCompare(val(b), 'pt-BR') * (ordem.asc ? 1 : -1));
-  }, [equipamentosMapa, busca, tipos, status, regioes, orgaos, somenteManutencao, ordem]);
+  }, [equipamentosMapa, busca, tipos, status, regioes, bairros, orgaos, somenteManutencao, ordem]);
 
   const paginaAtual = Math.min(pagina, Math.max(1, Math.ceil(lista.length / POR_PAGINA)));
   const visiveis = lista.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA);
@@ -112,7 +113,7 @@ export function Inventario() {
       </div>
 
       <Card className="gap-3 p-4">
-        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.4fr)_1fr_1fr_1fr_1fr_auto_auto_auto]">
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.4fr)_1fr_1fr_1fr_1fr_1fr_auto_auto_auto]">
           <div className="relative">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input className="pl-8" placeholder="Buscar nº de série, marca, rua, bairro…" value={busca} onChange={(e) => resetar(setBusca)(e.target.value)} />
@@ -120,6 +121,7 @@ export function Inventario() {
           <EscolhaMultipla valores={tipos} aoMudar={resetar(setTipos)} opcoes={OPCOES_TIPO} rotuloVazio="Todos os tipos" />
           <EscolhaMultipla valores={status} aoMudar={resetar(setStatus)} opcoes={OPCOES_STATUS} rotuloVazio="Todas as situações" />
           <EscolhaMultipla valores={regioes} aoMudar={resetar(setRegioes)} opcoes={OPCOES_REGIAO} rotuloVazio="Todas as regiões" />
+          <EscolhaMultipla valores={bairros} aoMudar={resetar(setBairros)} opcoes={opcoesBairro(regioes)} rotuloVazio="Todos os bairros" />
           <EscolhaMultipla valores={orgaos} aoMudar={resetar(setOrgaos)} opcoes={OPCOES_ORGAO} rotuloVazio="Todos os órgãos" />
           <label className="flex items-center gap-2 text-sm whitespace-nowrap">
             <Switch checked={somenteManutencao} onCheckedChange={resetar(setSomenteManutencao)} /> Manutenção

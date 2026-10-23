@@ -4,7 +4,7 @@ import { FilterX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { ORGAOS, REGIOES, STATUS_EQUIPAMENTO, TIPOS_EQUIPAMENTO } from '@/lib/catalog';
+import { BAIRROS, ORGAOS, REGIAO_POR_CODIGO, REGIOES, STATUS_EQUIPAMENTO, TIPOS_EQUIPAMENTO } from '@/lib/catalog';
 import { hojeLocal } from '@/lib/formato';
 import type { Equipamento } from '@/lib/types';
 import { useFiltros, type Camadas } from '@/stores/filtros';
@@ -21,6 +21,12 @@ export const OPCOES_STATUS = STATUS_EQUIPAMENTO.map((s) => ({
   ),
 }));
 export const OPCOES_REGIAO = REGIOES.map((r) => ({ valor: r.codigo, rotulo: r.nome }));
+/** Bairros (das regiões escolhidas, se houver), com a região ao lado para orientar. */
+export function opcoesBairro(regioes: string[]) {
+  return BAIRROS.filter((b) => !regioes.length || regioes.includes(b.regiao))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    .map((b) => ({ valor: b.nome, rotulo: <span>{b.nome} <span className="text-muted-foreground">· {REGIAO_POR_CODIGO[b.regiao]?.nome}</span></span> }));
+}
 export const OPCOES_ORGAO = ORGAOS.map((o) => ({ valor: o.codigo, rotulo: `${o.codigo} — ${o.nome}` }));
 
 export function precisaManutencao(e: Equipamento, limite = hojeLocal(7)) {
@@ -29,13 +35,14 @@ export function precisaManutencao(e: Equipamento, limite = hojeLocal(7)) {
 }
 
 /** Aplica os filtros da Central a uma lista de equipamentos. */
-export function filtrarEquipamentos(lista: Equipamento[], f: { tipos: string[]; status: string[]; regioes: string[]; orgaos: string[]; somenteManutencao: boolean }) {
+export function filtrarEquipamentos(lista: Equipamento[], f: { tipos: string[]; status: string[]; regioes: string[]; bairros: string[]; orgaos: string[]; somenteManutencao: boolean }) {
   const limite = hojeLocal(7);
   return lista.filter(
     (e) =>
       (!f.tipos.length || f.tipos.includes(e.tipo)) &&
       (!f.status.length || f.status.includes(e.status)) &&
       (!f.regioes.length || f.regioes.includes(e.regiao)) &&
+      (!f.bairros.length || f.bairros.includes(e.bairro)) &&
       (!f.orgaos.length || f.orgaos.includes(e.orgao)) &&
       (!f.somenteManutencao || precisaManutencao(e, limite)),
   );
@@ -46,11 +53,12 @@ const CAMADAS: { chave: keyof Camadas; rotulo: string }[] = [
   { chave: 'agentes', rotulo: 'Agentes' },
   { chave: 'ocorrencias', rotulo: 'Ocorrências' },
   { chave: 'regioes', rotulo: 'Situação das regiões' },
+  { chave: 'calor', rotulo: 'Mapa de calor (30 dias)' },
 ];
 
 export function FiltrosCentral({ total, visiveis }: { total: number; visiveis: number }) {
   const f = useFiltros();
-  const ativos = f.tipos.length + f.status.length + f.regioes.length + f.orgaos.length + (f.somenteManutencao ? 1 : 0);
+  const ativos = f.tipos.length + f.status.length + f.regioes.length + f.bairros.length + f.orgaos.length + (f.somenteManutencao ? 1 : 0);
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-2">
@@ -63,7 +71,17 @@ export function FiltrosCentral({ total, visiveis }: { total: number; visiveis: n
       </div>
       <div className="grid gap-2">
         <Label className="text-xs text-muted-foreground">Região</Label>
-        <EscolhaMultipla valores={f.regioes} aoMudar={(regioes) => f.set({ regioes })} opcoes={OPCOES_REGIAO} rotuloVazio="Toda a cidade" />
+        <EscolhaMultipla
+          valores={f.regioes}
+          // Bairros que não pertencem mais às regiões escolhidas saem do filtro.
+          aoMudar={(regioes) => f.set({ regioes, bairros: f.bairros.filter((b) => !regioes.length || regioes.includes(BAIRROS.find((x) => x.nome === b)?.regiao ?? '')) })}
+          opcoes={OPCOES_REGIAO}
+          rotuloVazio="Toda a cidade"
+        />
+      </div>
+      <div className="grid gap-2">
+        <Label className="text-xs text-muted-foreground">Bairro</Label>
+        <EscolhaMultipla valores={f.bairros} aoMudar={(bairros) => f.set({ bairros })} opcoes={opcoesBairro(f.regioes)} rotuloVazio="Todos os bairros" />
       </div>
       <div className="grid gap-2">
         <Label className="text-xs text-muted-foreground">Órgão responsável</Label>
@@ -88,7 +106,7 @@ export function FiltrosCentral({ total, visiveis }: { total: number; visiveis: n
         {CAMADAS.map((c) => (
           <label key={c.chave} className="flex items-center justify-between text-sm">
             {c.rotulo}
-            <Switch checked={f.camadas[c.chave]} onCheckedChange={() => f.alternarCamada(c.chave)} />
+            <Switch checked={!!f.camadas[c.chave]} onCheckedChange={() => f.alternarCamada(c.chave)} />
           </label>
         ))}
       </div>
