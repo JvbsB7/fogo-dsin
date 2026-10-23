@@ -5,7 +5,7 @@ Solução para a **Etapa Bônus do DSIN Coder Challenge 2026**: um sistema únic
 | Parte | O que o F.O.G.O. entrega | Onde ver |
 |---|---|---|
 | **1. Inventário inteligente** | Cadastro de 14 tipos de equipamento (radares, câmeras, semáforos, balanças, cancelas, totens, patinetes, viaturas…) com atributos próprios por tipo, endereço completo + GPS escolhido no mapa, situação, manutenção (imediata/agendada/periódica) e cadastro de agentes (trânsito, GCM, PM). | `/equipamentos`, `/agentes` |
-| **2. Central de Operações** | Mapa em tempo real (SSE) com equipamentos, agentes e ocorrências; indicadores (total, operacionais, indisponíveis, % disponibilidade, agentes ativos); filtros por tipo, situação, região, órgão e manutenção; alertas priorizados; ficha de detalhes com ações; visão consolidada por região (normal / atenção / crítico). | `/` e `/alertas` |
+| **2. Central de Operações** | Mapa em tempo real (SSE) com equipamentos, agentes e ocorrências; indicadores (total, operacionais, indisponíveis, % disponibilidade, agentes ativos); filtros por tipo, situação, região, bairro, órgão e manutenção (o mapa enquadra o bairro escolhido); mapa de calor das ocorrências dos últimos 30 dias; alertas priorizados; ficha de detalhes com ações; visão consolidada por região (normal / atenção / crítico); botão **Simular** com cenários de crise para demonstração. | `/` e `/alertas` |
 | **3. Cidade preditiva** | Risco por região e hora (próximas 24h), mapa de calor semanal, tendência por região, reforço de agentes por turno com sugestão de remanejamento, anomalias agora (picos, radar “morrendo”, equipamento mudo) e manutenção preditiva (chance de falha em 7 dias, modelos problemáticos, projeção da disponibilidade). Cada previsão explica **o que prevê, com quais dados, como calcula e como ajuda a decidir**. | `/previsoes` |
 
 ## Como rodar
@@ -78,6 +78,14 @@ src/
 tests/                  testes do módulo preditivo e da validação
 ```
 
+## Roteiro de demonstração
+
+1. Abra a Central (`/`): indicadores, mapa e alertas já chegam pelo fluxo em tempo real.
+2. Clique em **Simular → Semáforo apaga e causa acidente**: o semáforo fica vermelho no mapa, surgem um alerta crítico de equipamento e outro de ocorrência, a equipe mais próxima é despachada e os indicadores mudam, tudo sem recarregar a página.
+3. **Simular → Pico de ocorrências num bairro**: seis registros em minutos; a varredura de anomalias (teste de Poisson) marca o pico como fora do padrão.
+4. Nos filtros, escolha um bairro (o mapa se aproxima) e ligue a camada **Mapa de calor (30 dias)**.
+5. Em `/previsoes`, veja o risco das próximas 24 h, o reforço sugerido por turno e a manutenção preditiva, cada bloco com a explicação do modelo.
+
 ## Como as previsões funcionam
 
 Todos os modelos são estatísticos e explicáveis, sem caixa-preta, e cada bloco da tela traz a própria explicação.
@@ -104,6 +112,8 @@ O simulador acelera o tempo (30× por padrão). Para não distorcer as estatíst
 | POST | `/api/equipamentos/:id/manutencao` | Registra manutenção concluída |
 | GET / POST | `/api/agentes` | Lista / cadastra agentes |
 | GET / PUT / DELETE | `/api/agentes/:id` | Ficha / edita / remove |
+| GET | `/api/ocorrencias/calor` | Ocorrências agrupadas em grade (~450 m) para o mapa de calor (`dias`, padrão 30) |
+| GET / POST | `/api/cenarios` | Lista / dispara um cenário de demonstração (`semaforo`, `furto`, `pico`) |
 | GET / POST | `/api/ocorrencias` | Lista (`ativas=1`, `horas`) / registra (despacha o agente mais próximo) |
 | PATCH | `/api/ocorrencias/:id` | Encerra a ocorrência |
 | GET / PATCH | `/api/alertas`, `/api/alertas/:id` | Lista / reconhece |

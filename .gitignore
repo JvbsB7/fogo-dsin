@@ -42,3 +42,10 @@ next-env.d.ts
 
 # banco SQLite local (gerado pelo seed)
 /data
+
+# arquivos locais de ferramentas (gerados pelo editor / next dev com agentes de IA)
+/.claude/
+/AGENTS.md
+/CLAUDE.md
+/pnpm-lock.yaml
+/pnpm-workspace.yaml
